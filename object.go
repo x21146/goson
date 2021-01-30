@@ -1,6 +1,10 @@
 package goson
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"reflect"
+)
 
 type JObject map[string]interface{}
 
@@ -12,6 +16,99 @@ func NewJObject(b []byte) (JObject, error) {
 	}
 
 	return j, nil
+}
+
+func (j JObject) Clear() {
+	for k := range j {
+		delete(j, k)
+	}
+}
+
+func (j JObject) FromStruct(s interface{}) error {
+	j.Clear()
+	if s == nil {
+		return fmt.Errorf("input struct is nil")
+	}
+
+	v := reflect.Indirect(reflect.ValueOf(s))
+	if !v.IsValid() {
+		return fmt.Errorf("input struct is invalid")
+	}
+
+	t := v.Type()
+	n := t.NumField()
+	for i := 0; i < n; i++ {
+		ft := t.Field(i)
+		var name string
+		var opts options
+		if tag, ok := ft.Tag.Lookup("json"); ok {
+			name, opts = parseTag(tag)
+		} else if tag, ok := ft.Tag.Lookup("gson"); ok {
+			name, opts = parseTag(tag)
+		} else {
+			continue
+		}
+
+		if name == "-" {
+			continue
+		}
+
+		fv := v.Field(i)
+
+		if opts.Contains(omitempty) {
+			if fv == reflect.Zero(ft.Type) {
+				continue
+			}
+		}
+
+		j[name] = fv.Interface()
+	}
+
+	return nil
+}
+
+func (j JObject) ToStruct(s interface{}) error {
+	if s == nil {
+		return fmt.Errorf("input struct is nil")
+	}
+
+	v := reflect.Indirect(reflect.ValueOf(s))
+	if !v.IsValid() {
+		return fmt.Errorf("input struct is invalid")
+	}
+
+	t := v.Type()
+	n := t.NumField()
+	for i := 0; i < n; i++ {
+		ft := t.Field(i)
+		fv := v.Field(i)
+		var name string
+		if tag, ok := ft.Tag.Lookup("json"); ok {
+			name, _ = parseTag(tag)
+		} else if tag, ok := ft.Tag.Lookup("gson"); ok {
+			name, _ = parseTag(tag)
+		} else {
+			continue
+		}
+
+		if name == "-" {
+			continue
+		}
+
+		o, ok := j[name]
+		if !ok {
+			continue
+		}
+
+		jv := reflect.ValueOf(o)
+		if !jv.IsValid() {
+			continue
+		}
+
+		fv.Set(jv)
+	}
+
+	return nil
 }
 
 func (j JObject) GetInt(key string) (int, error) {
