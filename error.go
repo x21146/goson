@@ -1,4 +1,4 @@
-package goson
+package gson
 
 import "fmt"
 
